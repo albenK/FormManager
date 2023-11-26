@@ -1,9 +1,9 @@
 class ValidationRule {
     type: string = '';
     errorMessage: string = '';
-    validate: (controlValue: any, form: FormManager) => boolean = () => { return true; };
+    validate: (formFieldValue: any, form: FormManager) => boolean = () => { return true; };
 
-    constructor(type: string, errorMessage: string, validateFunc: (controlValue: any, form: FormManager) => boolean) {
+    constructor(type: string, errorMessage: string, validateFunc: (formFieldValue: any, form: FormManager) => boolean) {
         this.type = type;
         this.errorMessage = errorMessage;
         this.validate = validateFunc;
@@ -49,23 +49,23 @@ class ValidationRule {
     }
 }
 
-class FormControlConditionalEvent {
-    control: FormControl;
+class FormFieldConditionalEvent {
+    formField: FormField;
     form: FormManager;
     reason: string;
     constructor() {}
 }
 
-class FormControlConditional {
-    isShowing: (conditionalEvent: FormControlConditionalEvent) => boolean = () => { return true; };
+class FormFieldConditional {
+    isShowing: (conditionalEvent: FormFieldConditionalEvent) => boolean = () => { return true; };
     dependencies: Array<string> = [];
-    constructor(deps: Array<string>, isShowingFunc: (event: FormControlConditionalEvent) => boolean) {
+    constructor(deps: Array<string>, isShowingFunc: (event: FormFieldConditionalEvent) => boolean) {
         this.dependencies = deps;
         this.isShowing = isShowingFunc;
     }
 }
 
-class FormControl {
+class FormField {
     name: string = '';
     value: any = null;
     isValid: boolean = false;
@@ -73,7 +73,7 @@ class FormControl {
     errorMessage: string = '';
     validationRules: Array<ValidationRule> = [];
     context: {[key: string]: any} = {};
-    conditional: FormControlConditional = new FormControlConditional([],  (event: FormControlConditionalEvent) => { return true; });
+    conditional: FormFieldConditional = new FormFieldConditional([],  (event: FormFieldConditionalEvent) => { return true; });
     isShowing: boolean = true;
     constructor(name: string, initialValue: any) {
         this.name = name;
@@ -83,30 +83,30 @@ class FormControl {
 
 
 class FormManager {
-    private controls: {[key: string]: FormControl} = {};
-    private conditionallyRemovedControls: {[key: string]: FormControl} = {};
+    private formFields: {[key: string]: FormField} = {};
+    private conditionallyRemovedFormFields: {[key: string]: FormField} = {};
 
-    addControl(name: string, initialValue: any): FormControl {
-        const newControl: FormControl = new FormControl(name, initialValue);
-        this.controls[name] = newControl;
-        return newControl;
+    addFormField(name: string, initialValue: any): FormField {
+        const newFormField: FormField = new FormField(name, initialValue);
+        this.formFields[name] = newFormField;
+        return newFormField;
     }
 
-    removeControl(name: string): FormControl {
-        const control: FormControl = this.controls[name];
-        delete this.controls[name];
-        return control;
+    removeFormField(name: string): FormField {
+        const formField: FormField = this.formFields[name];
+        delete this.formFields[name];
+        return formField;
     }
 
     isFormValid(): boolean {
         let isValid: boolean = true;
 
-        const names: Array<string> = Object.keys(this.controls);
+        const names: Array<string> = Object.keys(this.formFields);
 
         for (let i = 0; i < names.length; i++) {
             const name: string = names[i];
-            const control: FormControl = this.controls[name];
-            if (!control.isValid) {
+            const formField: FormField = this.formFields[name];
+            if (!formField.isValid) {
                 isValid = false;
                 break;
             }
@@ -114,30 +114,34 @@ class FormManager {
         return isValid;
     }
 
-    getControls() { // get all visible controls
-        return this.controls;
+    getVisibleFormFields() { // get all visible form fields.
+        return this.formFields;
     }
 
-    get(name: string): FormControl { // get control by name.
-        return this.controls[name];
+    getConditionallyRemovedFormFields() {
+        return this.conditionallyRemovedFormFields;
+    }
+
+    getVisibleFormFieldByName(name: string): FormField { // get form field by name.
+        return this.formFields[name];
     }
 
     getValues() { // get the form values.
-        const formControls: Array<FormControl> = Object.values(this.controls);
+        const formFields: Array<FormField> = Object.values(this.formFields);
         const values: {[name: string]: any} = {};
-        formControls.forEach((control: FormControl) => {
-            values[control.name] = control.value;
+        formFields.forEach((field: FormField) => {
+            values[field.name] = field.value;
         });
         return values;
     }
 
-    private getValidityOfFormControl(control: FormControl): { isValid: boolean, errorMessage: string } {
+    private getValidityOfFormField(formField: FormField): { isValid: boolean, errorMessage: string } {
         let validityObject = { isValid: true, errorMessage: ''};
 
-        const validationRules: Array<ValidationRule> = control.validationRules || [];
+        const validationRules: Array<ValidationRule> = formField.validationRules || [];
         for (let i = 0; i < validationRules.length; i++) {
             const rule: ValidationRule = validationRules[i];
-            const rullPassed: boolean = rule.validate(control.value, this);
+            const rullPassed: boolean = rule.validate(formField.value, this);
             if (!rullPassed) {
                 validityObject = { isValid: false, errorMessage: rule.errorMessage};
                 break;
@@ -147,84 +151,84 @@ class FormManager {
     }
 
     runValidations(name: string) {
-        if (!this.controls[name]) {
-            throw new Error(`${name} form control does not exist.`);
+        if (!this.formFields[name]) {
+            throw new Error(`${name} form field does not exist.`);
         }
-        const control: FormControl = this.controls[name];
-        const validityObj = this.getValidityOfFormControl(control);
+        const control: FormField = this.formFields[name];
+        const validityObj = this.getValidityOfFormField(control);
         control.isValid = validityObj.isValid;
         control.errorMessage = validityObj.errorMessage;
     }
 
     runConditional(name: string, reasonForRunningConditional: string) {
-        if (!this.controls[name] && !this.conditionallyRemovedControls[name]) {
-            throw new Error(`${name} form control does not exist.`);
+        if (!this.formFields[name] && !this.conditionallyRemovedFormFields[name]) {
+            throw new Error(`${name} form field does not exist.`);
         }
-        let controlsObjToUse = this.controls[name] ? this.controls : this.conditionallyRemovedControls;
-        const control: FormControl = controlsObjToUse[name];
-        const conditionalEvent = new FormControlConditionalEvent();
-        conditionalEvent.control = control;
+        let controlsObjToUse = this.formFields[name] ? this.formFields : this.conditionallyRemovedFormFields;
+        const formField: FormField = controlsObjToUse[name];
+        const conditionalEvent = new FormFieldConditionalEvent();
+        conditionalEvent.formField = formField;
         conditionalEvent.reason = reasonForRunningConditional;
         conditionalEvent.form = this;
-        const isShowing: boolean = control.conditional.isShowing(conditionalEvent);
+        const isShowing: boolean = formField.conditional.isShowing(conditionalEvent);
         if (isShowing) {
-            this.controls[name] = control;
-            delete this.conditionallyRemovedControls[name];
+            this.formFields[name] = formField;
+            delete this.conditionallyRemovedFormFields[name];
         } else {
-            this.conditionallyRemovedControls[name] = control;
-            delete this.controls[name];
+            this.conditionallyRemovedFormFields[name] = formField;
+            delete this.formFields[name];
         }
     }
 
-    onControlValueChange(name: string, newValue: any) { // update control value, isTouched, run validations and any conditional logic.
-        if (!this.controls[name]) {
-            throw new Error(`${name} form control does not exist.`);
+    updateFormFieldStateOnValueChange(name: string, newValue: any) { // update control value, isTouched, run validations and any conditional logic.
+        if (!this.formFields[name]) {
+            throw new Error(`${name} form field does not exist.`);
         }
-        const control: FormControl = this.controls[name];
-        control.isTouched = true;
-        const isSameValue: boolean = control.value === newValue;
+        const formField: FormField = this.formFields[name];
+        formField.isTouched = true;
+        const isSameValue: boolean = formField.value === newValue;
         /* If the new value is the same as current value, no need to run validations
         or conditionals. */
         if (isSameValue) {
             return;
         }
-        control.value = newValue;
+        formField.value = newValue;
         this.runValidations(name);
-        /* Run conditional logic for any visible controls that depend on the value of this control.
+        /* Run conditional logic for any visible fields that depend on the value of this field.
         They may have to be hidden. */
-        const namesOfControls: Array<string> = Object.keys(this.controls);
-        const controlsWithDepsOnControl = namesOfControls.filter((n: string) => {
-            const c: FormControl = this.controls[n];
-            const index: number = c.conditional.dependencies.indexOf(name);
+        const namesOfFields: Array<string> = Object.keys(this.formFields);
+        const fieldsWithDepsOnField = namesOfFields.filter((n: string) => {
+            const f: FormField = this.formFields[n];
+            const index: number = f.conditional.dependencies.indexOf(name);
             const hasDependency: boolean = index > -1;
             return hasDependency;
         });
 
-        for (let i = 0; i < controlsWithDepsOnControl.length; i++) {
-            const controlName: string = controlsWithDepsOnControl[i];
-            this.runConditional(controlName, name);
+        for (let i = 0; i < fieldsWithDepsOnField.length; i++) {
+            const fieldName: string = fieldsWithDepsOnField[i];
+            this.runConditional(fieldName, name);
         }
-        // Run conditional logic for removed controls. They may have to be shown again.
-        const namesOfRemovedControls: Array<string> = Object.keys(this.conditionallyRemovedControls);
-        const controlsWithDeps = namesOfRemovedControls.filter((n: string) => {
-            const c: FormControl = this.conditionallyRemovedControls[n];
+        // Run conditional logic for removed fields. They may have to be shown again.
+        const namesOfRemovedFields: Array<string> = Object.keys(this.conditionallyRemovedFormFields);
+        const fieldsWithDeps = namesOfRemovedFields.filter((n: string) => {
+            const c: FormField = this.conditionallyRemovedFormFields[n];
             const index: number = c.conditional.dependencies.indexOf(name);
             const hasDependency: boolean = index > -1;
             return hasDependency;
         });
 
-        for (let i = 0; i < controlsWithDeps.length; i++) {
-            const controlName: string = controlsWithDeps[i];
-            this.runConditional(controlName, name);
+        for (let i = 0; i < fieldsWithDeps.length; i++) {
+            const fieldName: string = fieldsWithDeps[i];
+            this.runConditional(fieldName, name);
         }
     }
 
-    onControlBlur(name: string) { // When control has lost focus we can set isTouched to true and run validations.
-        if (!this.controls[name]) {
-            throw new Error(`${name} form control does not exist.`);
+    updateFormFieldStateOnBlur(name: string) { // When form field has lost focus we can set isTouched to true and run validations.
+        if (!this.formFields[name]) {
+            throw new Error(`${name} form field does not exist.`);
         }
-        const control: FormControl = this.controls[name];
-        control.isTouched = true;
+        const formField: FormField = this.formFields[name];
+        formField.isTouched = true;
         this.runValidations(name);
     }
 }
